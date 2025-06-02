@@ -1,0 +1,36 @@
+version: '3.7'
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: jitsu
+      POSTGRES_PASSWORD: jitsu
+      POSTGRES_DB: jitsu
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+
+  jitsu:
+    image: jitsucom/jitsu:latest
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CONFIGURATOR_META_STORAGE=postgres
+      - CONFIGURATOR_META_DSN=postgres://jitsu:jitsu@postgres:5432/jitsu?sslmode=disable
+      - EVENTNATIVE_META_STORAGE=postgres
+      - EVENTNATIVE_META_DSN=postgres://jitsu:jitsu@postgres:5432/jitsu?sslmode=disable
+    ports:
+      - "7000:7000"  # Control plane
+      - "8000:8000"  # Data plane (event proxy)
+      - "8001:8001"  # Debug UI (optional)
+
+volumes:
+  pgdata:
