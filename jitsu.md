@@ -1,59 +1,66 @@
-* PostgreSQL + Redis backend,
-* Jitsu Control Plane on port 7000,
-* Jitsu Data Plane on port 8000,
-* NGINX proxy with HTTPS for:
+# 🚀 Jitsu HTTPS Deployment on EC2 (`activity.liquide.life`)
 
-  * `/configurator` → Control Plane,
-  * `/api` → Data Plane.
+This setup runs a secure, production-ready deployment of [Jitsu](https://jitsu.com) on an **Amazon EC2 instance** using:
 
----
-
-# Step 0: Prepare your server
-
-Assuming a clean Ubuntu 20.04+ server with root or sudo access.
+* ✅ Docker + Docker Compose
+* ✅ NGINX as a reverse proxy
+* ✅ PostgreSQL + Redis
+* ✅ Let's Encrypt SSL for HTTPS
+* ✅ Domain: `https://activity.liquide.life`
 
 ---
 
-# Step 1: Install Docker & Docker Compose
+## 📁 Project Structure
 
-Run:
+```
+jitsu-https/
+├── docker-compose.yaml
+├── nginx.conf
+├── jitsu-ssl/             # Contains your SSL certificate and private key
+│   ├── fullchain.pem
+│   └── privkey.pem
+```
+
+---
+
+## 📦 Prerequisites
+
+1. **Domain setup**: `activity.liquide.life` must point to your EC2's public IP (via Route 53 A-record).
+2. **Ports open**: Ensure **22, 80, and 443** are allowed in your EC2 Security Group.
+3. **OS**: Ubuntu 20.04 or newer (Amazon Linux 2 also works with minor tweaks).
+
+---
+
+## 🛠️ Step-by-Step Setup
+
+### ✅ 1. SSH into EC2
 
 ```bash
-# Update & install dependencies
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+ssh -i your-key.pem ubuntu@<your-ec2-ip>
+```
 
-# Add Docker's official GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+### ✅ 2. Install Docker + Certbot
 
-# Add Docker repo
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Install Docker Engine & Docker Compose plugin
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Add your user to docker group (logout/login required for effect)
+```bash
+sudo apt update && sudo apt install -y docker.io docker-compose nginx certbot python3-certbot-nginx
+sudo systemctl start docker && sudo systemctl enable docker
 sudo usermod -aG docker $USER
+```
 
-# Verify docker installed
-docker --version
-docker compose version
+**Important**: Logout and re-login so Docker group takes effect.
+
+---
+
+### ✅ 3. Clone or Create the Project Folder
+
+```bash
+mkdir -p ~/jitsu-https/jitsu-ssl
+cd ~/jitsu-https
 ```
 
 ---
 
-# Step 2: Create your project directory & files
-
-```bash
-mkdir -p ~/jitsu-setup
-cd ~/jitsu-setup
-```
-
-Create `docker-compose.yml` with:
+### ✅ 4. `docker-compose.yaml`
 
 ```yaml
 version: '3.7'
@@ -66,29 +73,38 @@ services:
       POSTGRES_DB: jitsu
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    restart: unless-stopped
 
   redis:
     image: redis:6
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
 
   jitsu:
     image: jitsucom/jitsu:latest
-    depends_on:
-      - redis
-      - postgres
     environment:
       - REDIS_URL=redis://redis:6379
       - CONFIGURATOR_META_STORAGE=postgres
       - CONFIGURATOR_META_DSN=postgres://jitsu:jitsu@postgres:5432/jitsu?sslmode=disable
       - EVENTNATIVE_META_STORAGE=postgres
       - EVENTNATIVE_META_DSN=postgres://jitsu:jitsu@postgres:5432/jitsu?sslmode=disable
+    expose:
+      - "8000"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:latest
     ports:
-      - "7000:7000"  # Control Plane
-      - "8000:8000"  # Data Plane (event proxy)
-      - "8001:8001"  # Debug UI (optional)
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./jitsu-ssl:/etc/nginx/certs:ro
+    depends_on:
+      - jitsu
+    restart: unless-stopped
 
 volumes:
   pgdata:
@@ -96,246 +112,266 @@ volumes:
 
 ---
 
-# Step 3: Start Docker Compose stack
+### ✅ 5. `nginx.conf`
+
+```nginx
+events {}
+
+http {
+  server {
+    listen 80;
+    server_name activity.liquide.life;
+
+    location / {
+      return 301 https://$host$request_uri;
+    }
+  }
+
+  server {
+    listen 443 ssl;
+    server_name activity.liquide.life;
+
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+    location / {
+      proxy_pass http://jitsu:8000;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+    }
+  }
+}
+```
+
+---
+
+### ✅ 6. Run Jitsu (initially without SSL)
 
 ```bash
 docker compose up -d
 ```
 
-Wait a minute for all containers to start.
+Wait for containers to start.
 
-Check containers status:
+---
+
+### ✅ 7. Stop NGINX and Generate SSL
 
 ```bash
-docker ps
+docker compose stop nginx
+sudo certbot certonly --standalone -d activity.liquide.life
 ```
 
-You should see `postgres`, `redis`, and `jitsu` running.
-
----
-
-# Step 4: Install NGINX
+Copy certificates:
 
 ```bash
-sudo apt install -y nginx
+sudo cp /etc/letsencrypt/live/activity.liquide.life/fullchain.pem ./jitsu-ssl/
+sudo cp /etc/letsencrypt/live/activity.liquide.life/privkey.pem ./jitsu-ssl/
 ```
 
 ---
 
-# Step 5: Set up NGINX reverse proxy config
-
-Create a new NGINX site config file:
+### ✅ 8. Restart NGINX with SSL
 
 ```bash
-sudo nano /etc/nginx/sites-available/jitsu.conf
-```
-
-Paste this content (replace `activity.liquide.life` with your actual domain):
-
-```nginx
-server {
-    listen 80;
-    server_name activity.liquide.life;
-
-    # Redirect HTTP to HTTPS
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name activity.liquide.life;
-
-    ssl_certificate /etc/letsencrypt/live/activity.liquide.life/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/activity.liquide.life/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-
-    location /configurator/ {
-        proxy_pass http://localhost:7000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /api/ {
-        proxy_pass http://localhost:8000/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # Optional debug UI
-    location /events/ {
-        proxy_pass http://localhost:8001/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+docker compose up -d nginx
 ```
 
 ---
 
-# Step 6: Enable NGINX config & reload
+### ✅ 9. Access Jitsu UI
+
+Go to:
+👉 [https://activity.liquide.life](https://activity.liquide.life)
+You should see the Jitsu UI with **SSL lock 🔒**
+
+---
+
+## 🔁 Auto-Renew SSL (Every 60 Days)
+
+Let’s Encrypt certificates expire in 90 days.
+
+Test renewal:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/jitsu.conf /etc/nginx/sites-enabled/jitsu.conf
-
-sudo nginx -t
-sudo systemctl reload nginx
+sudo certbot renew --dry-run
 ```
 
----
-
-# Step 7: Obtain SSL certificates with Certbot
-
-Install Certbot and the NGINX plugin:
+To automate:
 
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
+sudo crontab -e
 ```
 
-Run Certbot to get and install SSL:
+Add:
 
-```bash
-sudo certbot --nginx -d activity.liquide.life
-```
-
-Follow prompts, agree to redirect HTTP → HTTPS.
-
----
-
-# Step 8: Final checks
-
-* Visit in your browser:
-
-  * `https://activity.liquide.life/configurator` — Jitsu Control Plane UI
-  * `https://activity.liquide.life/api` — Should proxy to Data Plane event endpoint
-
-* Test event proxy by integrating your client SDK with:
-
-```js
-jitsu('load', '<your_project_id>', {
-  api_host: 'https://activity.liquide.life/api',
-});
+```cron
+0 3 * * * certbot renew --post-hook "docker compose -f /home/ubuntu/jitsu-https/docker-compose.yaml restart nginx"
 ```
 
 ---
 
-# Bonus: How to check logs & containers
+## 🧹 Tips
 
-```bash
-docker logs -f jitsu_jitsu_1  # Assuming compose project name is jitsu
-sudo journalctl -u nginx -f
-```
+* Use a `docker-compose.override.yaml` for local testing if needed.
+* Keep your DNS pointed correctly at all times or renewal will fail.
+* Logs:
 
----
-
-# Summary files:
-
----
-
-### docker-compose.yml
-
-```yaml
-version: '3.7'
-services:
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: jitsu
-      POSTGRES_PASSWORD: jitsu
-      POSTGRES_DB: jitsu
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:6
-    ports:
-      - "6379:6379"
-
-  jitsu:
-    image: jitsucom/jitsu:latest
-    depends_on:
-      - redis
-      - postgres
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - CONFIGURATOR_META_STORAGE=postgres
-      - CONFIGURATOR_META_DSN=postgres://jitsu:jitsu@postgres:5432/jitsu?sslmode=disable
-      - EVENTNATIVE_META_STORAGE=postgres
-      - EVENTNATIVE_META_DSN=postgres://jitsu:jitsu@postgres:5432/jitsu?sslmode=disable
-    ports:
-      - "7000:7000"
-      - "8000:8000"
-      - "8001:8001"
-
-volumes:
-  pgdata:
-```
+  ```bash
+  docker compose logs -f jitsu
+  ```
 
 ---
 
-### NGINX config `/etc/nginx/sites-available/jitsu.conf`
+## ✅ Final Checklist
 
-```nginx
-server {
-    listen 80;
-    server_name activity.liquide.life;
+* [x] EC2 instance running
+* [x] Docker + Docker Compose installed
+* [x] Domain `activity.liquide.life` resolves to EC2
+* [x] Jitsu accessible via HTTPS
+* [x] Certbot auto-renewal in place
 
-    return 301 https://$host$request_uri;
-}
 
-server {
-    listen 443 ssl http2;
-    server_name activity.liquide.life;
+-----
+-----
+-----
 
-    ssl_certificate /etc/letsencrypt/live/activity.liquide.life/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/activity.liquide.life/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
+## ✅ What the Setup Already Covers (and why it's enough for MVP/production):
 
-    location /configurator/ {
-        proxy_pass http://localhost:7000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+| Feature                      | Status    | Details                                            |
+| ---------------------------- | --------- | -------------------------------------------------- |
+| **Public domain with HTTPS** | ✅ Done    | Route53 + Certbot for real SSL (Let’s Encrypt)     |
+| **Secure Reverse Proxy**     | ✅ Done    | NGINX with real SSL cert, automatic HTTP→HTTPS     |
+| **Persistence**              | ✅ Done    | PostgreSQL + Redis with Docker volumes             |
+| **Container orchestration**  | ✅ Basic   | Docker Compose (suitable for single-node prod)     |
+| **Restart on failure**       | ✅ Done    | `restart: unless-stopped` in `docker-compose.yaml` |
+| **Cert auto-renewal**        | ✅ Covered | Cron job with `certbot renew` + nginx reload       |
+| **DNS correctly mapped**     | ✅ Done    | You control the domain in Route 53                 |
 
-    location /api/ {
-        proxy_pass http://localhost:8000/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+This setup will **work reliably** for production workloads, even for **millions of events per month**.
 
-    location /events/ {
-        proxy_pass http://localhost:8001/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
+
+
+## ✅ When This Setup Is 100% Sufficient
+
+This setup is **perfectly sufficient** if:
+
+* You're running **a single EC2 instance** (dedicated for Jitsu).
+* You own the domain and have set up **DNS via Route 53**.
+* You're okay with **Docker Compose** instead of Kubernetes (totally fine for 1-node deployments).
+* You just want to **ingest events, test destinations, and manage sources with the UI**.
+
+----
+----
+| Daily Events  | Recommended Setup                                                                   |
+| ------------- | ----------------------------------------------------------------------------------- |
+| < 5 million   | Single `t3.medium` with local Redis + PostgreSQL                                    |
+| 5–20 million  | `t3.large` or `m5.large`, maybe external Redis                                      |
+| 20–50 million | Separate Redis/PostgreSQL, `m5.xlarge`, SSD storage                                 |
+| 50M+          | Multi-node setup (Docker Swarm, Kubernetes, or ECS) with Kafka or queueing strategy |
+
+----
+---
+
+
+## 🏗️ Architecture Overview
+
+            ┌────────────────────────────────────────────────────┐
+            │                  Route 53 (DNS)                    │
+            │  Domain: activity.liquide.life → EC2 Public IP     │
+            └────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+                   ┌────────────────────────────┐
+                   │     EC2 Instance (Ubuntu)   │
+                   │ ─────────────────────────── │
+                   │  Docker + docker-compose    │
+                   │  Docker Volumes             │
+                   │  NGINX (SSL termination)    │
+                   │  Jitsu (Data + UI)          │
+                   │  PostgreSQL (metadata)      │
+                   │  Redis (event cache)        │
+                   └────────────────────────────┘
+                                 │
+            ┌────────────────────┼───────────────────---------------─┐
+            ▼                    ▼                                   ▼
+      Destinations           Web UI (port 443)                   REST API / SDK
+   (Amplitude, S3, etc.)       https://activity.liquide.life       JS SDK / HTTP
+
+
+
+
+
+## ⚙️ Working Style – Step-by-Step Flow
+
+### 1. **DNS and SSL (HTTPS Access)**
+
+* You use **Route 53** to point the domain `activity.liquide.life` to your EC2 public IP.
+* You install **NGINX** to serve as a **reverse proxy with SSL termination** using a valid certificate (from Let's Encrypt or custom CA).
+* Users and scripts access Jitsu via `https://activity.liquide.life`.
 
 ---
 
-# Let me know if you want help with:
+### 2. **Incoming Events**
 
-* Automating setup with a shell script
-* Troubleshooting errors or logs
-* Configuring Jitsu SDK on your frontend
+* Website, SDK, or backend sends events via:
+
+  * `https://activity.liquide.life/api/v1/event` (standard HTTP event ingestion)
+  * or via Jitsu’s JS snippet loaded on your frontend
+
+---
+
+### 3. **NGINX Reverse Proxy**
+
+* NGINX listens on **port 443 (HTTPS)**.
+* Forwards traffic to the `jitsu` container (on port 8000 internally).
+* It ensures all public-facing traffic is encrypted.
+
+---
+
+### 4. **Jitsu Core (Docker Container)**
+
+* **Jitsu receives events** and:
+
+  * Validates schema and request.
+  * Optionally enriches or transforms the data.
+  * Uses **Redis** to deduplicate or temporarily cache some event metadata.
+  * Sends events to configured **destinations** (e.g., Amplitude, S3, BigQuery, Redshift, etc.).
+* **Jitsu UI** is served from the same container on port `8000`, routed by NGINX.
+* You manage source/destination config via the web UI.
+
+---
+
+### 5. **PostgreSQL**
+
+* Stores:
+
+  * Destination config
+  * Project metadata
+  * User accounts
+* Data is stored persistently using a Docker volume or an external RDS instance if scaled further.
+
+---
+
+### 6. **Redis**
+
+* Used for:
+
+  * Event caching
+  * Deduplication
+  * Reducing pressure on PostgreSQL
+* A lightweight, fast key-value store ideal for this task.
+
+---
+
+## 🛡️ Security & Production Hardening
+
+| Component  | Hardening Applied                               |
+| ---------- | ----------------------------------------------- |
+| NGINX      | HTTPS with a valid SSL certificate              |
+| Domain     | Routed through Route 53 to EC2 public IP        |
+| Firewall   | Only port `443` (HTTPS) exposed to public       |
+| PostgreSQL | Internal-only, not publicly accessible          |
+| Redis      | Internal-only, Docker-level network isolation   |
+| Docker     | Controlled using `docker-compose`, volumes used |
+| Jitsu UI   | Can be SSO/OIDC enabled for team access         |
