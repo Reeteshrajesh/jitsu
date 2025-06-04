@@ -96,6 +96,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       BULKER_URL: http://bulker:3042
       BULKER_AUTH_KEY: ${RAW_AUTH_TOKEN}
+      REDIS_URL: redis://default:default@redis:6379
       REPOSITORY_BASE_URL: http://console:3000/api/admin/export/
       REPOSITORY_AUTH_TOKEN: ${SERVICE_AUTH_TOKEN}
       MONGODB_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo/
