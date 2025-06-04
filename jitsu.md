@@ -1,4 +1,4 @@
-# 🚀 Jitsu HTTPS Deployment on EC2 (`activity.liquide.life`)
+# 🚀 Jitsu HTTPS Deployment on EC2 (`activities.liquid.life`)
 
 This setup runs a secure, production-ready deployment of [Jitsu](https://jitsu.com) on an **Amazon EC2 instance** using:
 
@@ -25,7 +25,7 @@ jitsu-https/
 
 ## 📦 Prerequisites
 
-1. **Domain setup**: `activity.liquide.life` must point to your EC2's public IP (via Route 53 A-record).
+1. **Domain setup**: `activities.liquid.life` must point to your EC2's public IP (via Route 53 A-record).
 2. **Ports open**: Ensure **22, 80, and 443** are allowed in your EC2 Security Group.
 3. **OS**: Ubuntu 20.04 or newer (Amazon Linux 2 also works with minor tweaks).
 
@@ -120,7 +120,7 @@ events {}
 http {
   server {
     listen 80;
-    server_name activity.liquide.life;
+    server_name activities.liquid.life;
 
     location / {
       return 301 https://$host$request_uri;
@@ -129,7 +129,7 @@ http {
 
   server {
     listen 443 ssl;
-    server_name activity.liquide.life;
+    server_name activities.liquid.life;    // jisake arround hum ssl certificate lete hai 
 
     ssl_certificate     /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
@@ -159,14 +159,14 @@ Wait for containers to start.
 
 ```bash
 docker compose stop nginx
-sudo certbot certonly --standalone -d activity.liquide.life
+sudo certbot certonly --standalone -d activities.liquid.life
 ```
 
 Copy certificates:
 
 ```bash
-sudo cp /etc/letsencrypt/live/activity.liquide.life/fullchain.pem ./jitsu-ssl/
-sudo cp /etc/letsencrypt/live/activity.liquide.life/privkey.pem ./jitsu-ssl/
+sudo cp /etc/letsencrypt/live/activities.liquid.life/fullchain.pem ./jitsu-ssl/
+sudo cp /etc/letsencrypt/live/activities.liquid.life/privkey.pem ./jitsu-ssl/
 ```
 
 ---
@@ -227,7 +227,7 @@ Add:
 
 * [x] EC2 instance running
 * [x] Docker + Docker Compose installed
-* [x] Domain `activity.liquide.life` resolves to EC2
+* [x] Domain `activities.liquid.life` resolves to EC2
 * [x] Jitsu accessible via HTTPS
 * [x] Certbot auto-renewal in place
 
@@ -278,7 +278,7 @@ This setup is **perfectly sufficient** if:
 
             ┌────────────────────────────────────────────────────┐
             │                  Route 53 (DNS)                    │
-            │  Domain: activity.liquide.life → EC2 Public IP     │
+            │  Domain: activities.liquid.life → EC2 Public IP     │
             └────────────────────────────────────────────────────┘
                                  │
                                  ▼
@@ -306,7 +306,7 @@ This setup is **perfectly sufficient** if:
 
 ### 1. **DNS and SSL (HTTPS Access)**
 
-* You use **Route 53** to point the domain `activity.liquide.life` to your EC2 public IP.
+* You use **Route 53** to point the domain `activities.liquid.life` to your EC2 public IP.
 * You install **NGINX** to serve as a **reverse proxy with SSL termination** using a valid certificate (from Let's Encrypt or custom CA).
 * Users and scripts access Jitsu via `https://activities.liquid.life`.
 
