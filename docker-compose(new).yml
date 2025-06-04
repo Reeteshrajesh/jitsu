@@ -25,6 +25,14 @@ services:
       - clickhouse_data:/var/lib/clickhouse
     restart: unless-stopped
 
+   redis:
+     tty: true
+     image: redis:6.2-alpine
+     restart: "unless-stopped"
+     command: "redis-server --save 20 1 --loglevel warning --requirepass default"
+   #    volumes:
+   #      - ./data/redis:/var/lib/redis
+
   mongo:
     image: mongo
     environment:
