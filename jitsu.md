@@ -6,7 +6,7 @@ This setup runs a secure, production-ready deployment of [Jitsu](https://jitsu.c
 * ✅ NGINX as a reverse proxy
 * ✅ PostgreSQL + Redis
 * ✅ Let's Encrypt SSL for HTTPS
-* ✅ Domain: `https://activity.liquide.life`
+* ✅ Domain: `https://activities.liquid.life`
 
 ---
 
@@ -182,7 +182,7 @@ docker compose up -d nginx
 ### ✅ 9. Access Jitsu UI
 
 Go to:
-👉 [https://activity.liquide.life](https://activity.liquide.life)
+👉 [https://activities.liquid.life](https://activities.liquid.life)
 You should see the Jitsu UI with **SSL lock 🔒**
 
 ---
@@ -296,7 +296,7 @@ This setup is **perfectly sufficient** if:
             ┌────────────────────┼───────────────────---------------─┐
             ▼                    ▼                                   ▼
       Destinations           Web UI (port 443)                   REST API / SDK
-   (Amplitude, S3, etc.)       https://activity.liquide.life       JS SDK / HTTP
+   (Amplitude, S3, etc.)       https://activities.liquid.life       JS SDK / HTTP
 
 
 
@@ -308,7 +308,7 @@ This setup is **perfectly sufficient** if:
 
 * You use **Route 53** to point the domain `activity.liquide.life` to your EC2 public IP.
 * You install **NGINX** to serve as a **reverse proxy with SSL termination** using a valid certificate (from Let's Encrypt or custom CA).
-* Users and scripts access Jitsu via `https://activity.liquide.life`.
+* Users and scripts access Jitsu via `https://activities.liquid.life`.
 
 ---
 
@@ -316,7 +316,7 @@ This setup is **perfectly sufficient** if:
 
 * Website, SDK, or backend sends events via:
 
-  * `https://activity.liquide.life/api/v1/event` (standard HTTP event ingestion)
+  * `https://activities.liquid.life/api/v1/event` (standard HTTP event ingestion)
   * or via Jitsu’s JS snippet loaded on your frontend
 
 ---
